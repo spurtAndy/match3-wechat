@@ -21,13 +21,40 @@
     #legend .k { color: #fff; }
     #game { background: #23232c; border-radius: 12px; touch-action: none; }
     #tip { font-size: 12px; color: #888; margin-top: 10px; }
+
+    /* 玩家档案界面 */
+    #profileScreen { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 20px; width: 100%; }
+    #profileScreen h1 { font-size: 24px; margin: 0; }
+    #profileScreen .sub { color: #8a8a97; font-size: 13px; margin: 0 0 6px; }
+    #profileList { display: flex; flex-direction: column; gap: 10px; width: min(420px, 88vw); }
+    .profileRow { display: flex; align-items: center; justify-content: space-between; background: #23232c; border-radius: 12px; padding: 14px 16px; cursor: pointer; }
+    .profileRow:hover { background: #2c2c37; }
+    .profileRow .pname { font-size: 17px; }
+    .profileRow .pinfo { color: #8a8a97; font-size: 12px; margin-left: 10px; }
+    .profileRow .delBtn { background: rgba(239,68,68,0.9); color: #fff; border: none; border-radius: 50%; width: 26px; height: 26px; font-size: 15px; line-height: 1; cursor: pointer; }
+    #newProfileBtn { width: min(420px, 88vw); padding: 14px; border: none; border-radius: 12px; background: #2e7d5b; color: #fff; font-size: 16px; cursor: pointer; }
+    #newProfileBtn:hover { background: #37926a; }
+    #gameScreen { display: none; flex-direction: column; align-items: center; }
+    #playerBar { font-size: 14px; color: #cbd; margin-bottom: 6px; display: flex; align-items: center; gap: 10px; }
+    #playerBar b { color: #FFD54A; }
+    #switchBtn { background: rgba(255,255,255,0.14); color: #fff; border: none; border-radius: 13px; padding: 4px 12px; font-size: 12px; cursor: pointer; }
+    #switchBtn:hover { background: rgba(255,255,255,0.24); }
   </style>
 </head>
 <body>
-  <div id="hud">第 <b id="level">1</b> 关 · 分数 <b id="score">0</b> · 步数 <b id="moves">25</b> · 目标 <b id="target">500</b><span id="iceWrap"> · 冰 <b id="ice">0</b></span><span id="chainWrap"> · 锁 <b id="chain">0</b></span></div>
-  <div id="legend"><span class="k">4连</span>→直线消除　<span class="k">5连</span>→炸弹(3×3)　<span class="k">冰块</span>：其上消除可碎，集目标分清空冰过关　<span class="k">锁链</span>不可移动，相邻消除可破</div>
-  <canvas id="game"></canvas>
-  <div id="tip">点一个方块，再点相邻方块交换 · 通关进入下一关</div>
+  <div id="profileScreen">
+    <h1>选择玩家</h1>
+    <p class="sub">每个玩家的进度独立保存</p>
+    <div id="profileList"></div>
+    <button id="newProfileBtn">＋ 新建玩家</button>
+  </div>
+  <div id="gameScreen">
+    <div id="playerBar">玩家：<b id="playerName">-</b><button id="switchBtn">切换玩家</button></div>
+    <div id="hud">第 <b id="level">1</b> 关 · 分数 <b id="score">0</b> · 步数 <b id="moves">25</b> · 目标 <b id="target">500</b><span id="iceWrap"> · 冰 <b id="ice">0</b></span><span id="chainWrap"> · 锁 <b id="chain">0</b></span></div>
+    <div id="legend"><span class="k">4连</span>→直线消除　<span class="k">5连</span>→炸弹(3×3)　<span class="k">冰块</span>：其上消除可碎，集目标分清空冰过关　<span class="k">锁链</span>不可移动，相邻消除可破</div>
+    <canvas id="game"></canvas>
+    <div id="tip">点一个方块，再点相邻方块交换 · 通关进入下一关</div>
+  </div>
 
   <script>
   // ===== 核心引擎（与微信小游戏 game-core.js 同源，此处内联以便双击即玩）=====
@@ -434,12 +461,88 @@
     else global.GameCore = api;
   })(typeof window !== 'undefined' ? window : globalThis);
 
+  // ===== 多玩家档案存储（与微信端 profile-store.js 同源，此处内联）=====
+  (function (root) {
+    'use strict';
+    const DIR = 'profiles';
+    const INDEX = DIR + '/index.json';
+    class ProfileStore {
+      constructor(adapter) { this.adapter = adapter; this._index = null; }
+      _file(id) { return DIR + '/' + id + '.json'; }
+      loadIndex() {
+        if (this._index) return this._index;
+        let idx = null;
+        try { const raw = this.adapter.readFile(INDEX); if (raw) idx = JSON.parse(raw); } catch (e) { idx = null; }
+        if (!idx || !Array.isArray(idx.profiles)) idx = { profiles: [], currentId: null };
+        this._index = idx;
+        return idx;
+      }
+      _saveIndex() { try { this.adapter.writeFile(INDEX, JSON.stringify(this._index)); } catch (e) {} }
+      list() { return this.loadIndex().profiles.slice(); }
+      count() { return this.loadIndex().profiles.length; }
+      getCurrentId() { return this.loadIndex().currentId; }
+      setCurrent(id) { const idx = this.loadIndex(); idx.currentId = id; this._saveIndex(); }
+      get(id) { return this.loadIndex().profiles.find(p => p.id === id) || null; }
+      getCurrent() { return this.get(this.loadIndex().currentId); }
+      create(name) {
+        const idx = this.loadIndex();
+        const id = 'p' + Date.now().toString(36) + Math.floor(Math.random() * 900 + 100);
+        const profile = { id, name: (name && String(name).trim()) || ('玩家' + (idx.profiles.length + 1)), level: 0, createdAt: Date.now(), updatedAt: Date.now() };
+        idx.profiles.push(profile); idx.currentId = id; this._saveIndex(); this._write(profile);
+        return profile;
+      }
+      _write(profile) { try { this.adapter.writeFile(this._file(profile.id), JSON.stringify(profile)); } catch (e) {} }
+      loadData(id) { try { const raw = this.adapter.readFile(this._file(id)); if (raw) return JSON.parse(raw); } catch (e) {} return this.get(id); }
+      update(id, patch) {
+        const idx = this.loadIndex();
+        const p = idx.profiles.find(x => x.id === id);
+        if (!p) return null;
+        Object.assign(p, patch, { updatedAt: Date.now() });
+        this._saveIndex(); this._write(p);
+        return p;
+      }
+      remove(id) {
+        const idx = this.loadIndex();
+        idx.profiles = idx.profiles.filter(x => x.id !== id);
+        if (idx.currentId === id) idx.currentId = idx.profiles.length ? idx.profiles[0].id : null;
+        this._saveIndex();
+        try { this.adapter.removeFile(this._file(id)); } catch (e) {}
+      }
+      migrateLegacy(legacyLevel) {
+        const idx = this.loadIndex();
+        if (idx.profiles.length > 0) return null;
+        const lv = Math.max(0, parseInt(legacyLevel, 10) || 0);
+        const p = this.create('我的档案');
+        if (lv > 0) this.update(p.id, { level: lv });
+        return p;
+      }
+    }
+    root.ProfileStore = { ProfileStore, DIR, INDEX };
+  })(typeof window !== 'undefined' ? window : globalThis);
+
   // ===== 网页预览入口 =====
   (function () {
     const { Match3Game, LEVELS } = window.GameCore;
-    let savedLevel = 0;
-    try { savedLevel = parseInt(localStorage.getItem('match3_level') || '0', 10) || 0; } catch (e) {}
-    const game = new Match3Game(8, 6, { level: savedLevel });
+    const { ProfileStore } = window.ProfileStore;
+
+    // localStorage 以「每个档案一个文件」的形式保存：键 m3fs:profiles/<id>.json
+    const LS = window.localStorage;
+    const webAdapter = {
+      readFile(n) { try { return LS.getItem('m3fs:' + n); } catch (e) { return null; } },
+      writeFile(n, s) { try { LS.setItem('m3fs:' + n, s); } catch (e) {} },
+      removeFile(n) { try { LS.removeItem('m3fs:' + n); } catch (e) {} },
+    };
+    const store = new ProfileStore(webAdapter);
+    try {
+      if (store.count() === 0) {
+        let legacy = 0;
+        try { legacy = parseInt(LS.getItem('match3_level') || '0', 10) || 0; } catch (e) {}
+        store.migrateLegacy(legacy);
+        try { LS.removeItem('match3_level'); } catch (e) {}
+      }
+    } catch (e) {}
+
+    const game = new Match3Game(8, 6, { level: 0 });
     const canvas = document.getElementById('game');
     const ctx = canvas.getContext('2d');
     const levelEl = document.getElementById('level');
@@ -450,8 +553,52 @@
     const iceEl = document.getElementById('ice');
     const chainWrap = document.getElementById('chainWrap');
     const chainEl = document.getElementById('chain');
+    const profileScreen = document.getElementById('profileScreen');
+    const gameScreen = document.getElementById('gameScreen');
+    const profileList = document.getElementById('profileList');
+    const playerNameEl = document.getElementById('playerName');
+    let currentProfile = null;
     let layout = null;
     let last = 0;
+
+    function saveProgress() { if (currentProfile) store.update(currentProfile.id, { level: game.levelIndex }); }
+    function renderProfiles() {
+      profileList.innerHTML = '';
+      for (const p of store.list()) {
+        const row = document.createElement('div');
+        row.className = 'profileRow';
+        const left = document.createElement('div');
+        const nm = document.createElement('span'); nm.className = 'pname'; nm.textContent = p.name;
+        const info = document.createElement('span'); info.className = 'pinfo'; info.textContent = '第 ' + ((p.level || 0) + 1) + ' 关';
+        left.appendChild(nm); left.appendChild(info);
+        const del = document.createElement('button');
+        del.className = 'delBtn'; del.textContent = '×';
+        del.addEventListener('click', (e) => {
+          e.stopPropagation();
+          if (window.confirm('删除玩家「' + p.name + '」？该玩家的进度将一并删除。')) { store.remove(p.id); renderProfiles(); }
+        });
+        row.appendChild(left); row.appendChild(del);
+        row.addEventListener('click', () => enterProfile(p.id));
+        profileList.appendChild(row);
+      }
+    }
+    function showProfiles() {
+      gameScreen.style.display = 'none';
+      profileScreen.style.display = 'flex';
+      renderProfiles();
+    }
+    function enterProfile(id) {
+      const p = store.get(id);
+      if (!p) return;
+      currentProfile = p;
+      store.setCurrent(id);
+      playerNameEl.textContent = p.name;
+      profileScreen.style.display = 'none';
+      gameScreen.style.display = 'flex';
+      game.setLevel(p.level || 0);
+      last = 0;
+      S = fit();
+    }
 
     // ---- 音效（Web Audio 合成，无需音频文件，离线可用）----
     class SoundSynth {
@@ -550,7 +697,7 @@
     function handlePoint(clientX, clientY) {
       sound.ensure();
       if (game.won) {
-        if (!isLastLevel()) { game.nextLevel(); try { localStorage.setItem('match3_level', String(game.levelIndex)); } catch (e) {} }
+        if (!isLastLevel()) { game.nextLevel(); saveProgress(); }
         else game.init();
         return;
       }
@@ -575,6 +722,17 @@
         game.selected = cell;
       }
     }
+    document.getElementById('newProfileBtn').addEventListener('click', () => {
+      const defName = '玩家' + (store.count() + 1);
+      let name = defName;
+      try { const r = window.prompt('输入玩家名称', defName); if (r != null) name = r; } catch (e) {}
+      const p = store.create(name);
+      renderProfiles();
+      enterProfile(p.id);
+    });
+    document.getElementById('switchBtn').addEventListener('click', () => { saveProgress(); showProfiles(); });
+
+    renderProfiles();
     canvas.addEventListener('click', (e) => handlePoint(e.clientX, e.clientY));
     canvas.addEventListener('touchstart', (e) => {
       e.preventDefault();
