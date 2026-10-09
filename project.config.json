@@ -1,0 +1,12 @@
+{
+  "appid": "touristappid",
+  "projectname": "match3-game",
+  "compileType": "game",
+  "libVersion": "latest",
+  "setting": {
+    "es6": true,
+    "postcss": false,
+    "minified": false,
+    "urlCheck": false
+  }
+}
